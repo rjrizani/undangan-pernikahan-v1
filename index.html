@@ -257,16 +257,6 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
 
-        // Sign in user anonymously to allow writing to Firestore
-        signInAnonymously(auth)
-            .then(() => {
-                console.log("Signed in anonymously");
-                loadWishes(); // Load wishes after successful sign-in
-            })
-            .catch((error) => {
-                console.error("Anonymous sign-in failed:", error);
-            });
-
         // Get elements
         const wishForm = document.getElementById('wish-form');
         const wishesList = document.getElementById('wishes-list');
@@ -280,11 +270,11 @@
         // Function to load and display wishes in real-time
         function loadWishes() {
             const wishesCol = collection(db, 'wishes');
-            const q = query(wishesCol, orderBy('createdAt', 'desc')); // Order by newest first
+            const q = query(wishesCol, orderBy('createdAt', 'desc'));
 
             onSnapshot(q, (snapshot) => {
-                loadingWishes.style.display = 'none'; // Hide loading text
-                wishesList.innerHTML = ''; // Clear the list before adding new data
+                loadingWishes.style.display = 'none';
+                wishesList.innerHTML = '';
                 if (snapshot.empty) {
                     wishesList.innerHTML = '<p class="text-center text-gray-500">Jadilah yang pertama mengirim ucapan!</p>';
                 } else {
@@ -292,16 +282,65 @@
                         const wish = doc.data();
                         const newWishElement = document.createElement('div');
                         newWishElement.className = 'bg-gray-50 p-4 rounded-lg animate-fade-in';
-                        // Sanitize input to prevent HTML injection
                         const safeName = document.createTextNode(wish.name).textContent;
                         const safeWish = document.createTextNode(wish.wish).textContent;
                         newWishElement.innerHTML = `<p class="font-bold">${safeName}</p><p class="text-gray-600 whitespace-pre-wrap">${safeWish}</p>`;
                         wishesList.appendChild(newWishElement);
                     });
                 }
+            }, (error) => { // <<< INI BAGIAN BARU UNTUK MENANGKAP ERROR
+                console.error("Error fetching wishes: ", error);
+                loadingWishes.style.display = 'none';
+                wishesList.innerHTML = `<div class="text-center text-red-600 bg-red-100 p-4 rounded-lg">
+                    <p class="font-bold">Gagal memuat ucapan.</p>
+                    <p class="text-sm">Ini mungkin karena indeks Firestore belum dibuat. Silakan periksa console browser (F12) untuk link pembuatan indeks.</p>
+                </div>`;
             });
         }
 
+        // Sign in user anonymously to allow writing to Firestore
+        signInAnonymously(auth)
+            .then(() => {
+                console.log("Signed in anonymously");
+                loadWishes();
+            })
+            .catch((error) => {
+                console.error("Anonymous sign-in failed:", error);
+                wishesList.innerHTML = `<p class="text-center text-red-500">Gagal terhubung ke server. Coba muat ulang halaman.</p>`;
+            });
+
+        // Handle form submission
+        wishForm.addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            submitText.classList.add('hidden');
+            submitSpinner.classList.remove('hidden');
+            submitBtn.disabled = true;
+
+            const name = this.elements['name'].value;
+            const wish = this.elements['wish'].value;
+
+            try {
+                await addDoc(collection(db, "wishes"), {
+                    name: name,
+                    wish: wish,
+                    createdAt: serverTimestamp()
+                });
+                this.reset();
+                modal.classList.remove('opacity-0', 'pointer-events-none');
+            } catch (error) {
+                console.error("Error adding document: ", error);
+                alert("Maaf, terjadi kesalahan saat mengirim ucapan. Silakan coba lagi.");
+            } finally {
+                submitText.classList.remove('hidden');
+                submitSpinner.classList.add('hidden');
+                submitBtn.disabled = false;
+            }
+        });
+
+        closeModalBtn.addEventListener('click', () => {
+            modal.classList.add('opacity-0', 'pointer-events-none');
+        });
         // Handle form submission
         wishForm.addEventListener('submit', async function (e) {
             e.preventDefault();
